@@ -244,6 +244,7 @@ namespace esphome
     void Device::disconnect()
     {
       this->active_ = false;
+      this->request_counter_ = 0;
       this->parent()->set_enabled(false);
       this->node_state = ClientState::IDLE;
     }

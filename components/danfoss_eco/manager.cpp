@@ -7,6 +7,8 @@ namespace esphome
   namespace danfoss_eco
   {
 
+    static const char *const MANAGER_TAG = "danfoss_eco.manager";
+
     void DanfossEcoManager::setup()
     {
       // Stop the individual per-device polling timers so that the manager drives
@@ -15,7 +17,7 @@ namespace esphome
       for (auto *device : this->devices_)
         device->stop_poller();
 
-      ESP_LOGD(TAG, "DanfossEcoManager: managing %d device(s), individual pollers stopped",
+      ESP_LOGD(MANAGER_TAG, "DanfossEcoManager: managing %d device(s), individual pollers stopped",
                (int)this->devices_.size());
     }
 
@@ -27,7 +29,7 @@ namespace esphome
       if (this->current_idx_ >= this->devices_.size())
       {
         // All devices in this cycle have been handled
-        ESP_LOGI(TAG, "DanfossEcoManager: polling cycle complete (%d device(s))",
+        ESP_LOGI(MANAGER_TAG, "DanfossEcoManager: polling cycle complete (%d device(s))",
                  (int)this->devices_.size());
         this->cycle_active_ = false;
         return;
@@ -41,7 +43,7 @@ namespace esphome
       this->current_idx_++;
       if (this->current_idx_ < this->devices_.size())
       {
-        ESP_LOGD(TAG, "DanfossEcoManager: starting device %d/%d",
+        ESP_LOGD(MANAGER_TAG, "DanfossEcoManager: starting device %d/%d",
                  (int)this->current_idx_ + 1, (int)this->devices_.size());
         this->devices_[this->current_idx_]->trigger_update();
       }
@@ -52,7 +54,7 @@ namespace esphome
       if (this->devices_.empty())
         return;
 
-      ESP_LOGI(TAG, "DanfossEcoManager: starting polling cycle for %d device(s)",
+      ESP_LOGI(MANAGER_TAG, "DanfossEcoManager: starting polling cycle for %d device(s)",
                (int)this->devices_.size());
 
       this->current_idx_ = 0;
@@ -62,9 +64,9 @@ namespace esphome
 
     void DanfossEcoManager::dump_config()
     {
-      ESP_LOGCONFIG(TAG, "Danfoss Eco Manager:");
-      ESP_LOGCONFIG(TAG, "  Devices: %d", (int)this->devices_.size());
-      ESP_LOGCONFIG(TAG, "  Update Interval: %ums", this->get_update_interval());
+      ESP_LOGCONFIG(MANAGER_TAG, "Danfoss Eco Manager:");
+      ESP_LOGCONFIG(MANAGER_TAG, "  Devices: %d", (int)this->devices_.size());
+      ESP_LOGCONFIG(MANAGER_TAG, "  Update Interval: %ums", this->get_update_interval());
     }
 
   } // namespace danfoss_eco
