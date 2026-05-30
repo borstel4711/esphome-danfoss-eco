@@ -1,0 +1,113 @@
+esphome:
+  name: etrv2wifi
+  comment: Danfoss ECO eTRV BLE bridge – sequential polling of 5 devices via DanfossEcoManager
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable Home Assistant API
+api:
+  password: "generate-api-password"
+
+ota:
+  password: "generate-ota-password"
+
+wifi:
+  ssid: "my-ssid"
+  password: "my-password"
+
+  # Enable fallback hotspot in case WiFi connection fails
+  ap:
+    ssid: "eTRV Fallback Hotspot"
+    password: "my-fallback-ap-password"
+
+captive_portal:
+
+external_components:
+  - source: github://borstel4711/esphome-danfoss-eco
+
+# ---------------------------------------------------------------------------
+# BLE clients – one entry per physical eTRV
+# ---------------------------------------------------------------------------
+ble_client:
+  - mac_address: 00:04:2f:aa:aa:aa
+    id: ble_trv_room
+  - mac_address: 00:04:2f:bb:bb:bb
+    id: ble_trv_kitchen
+  - mac_address: 00:04:2f:cc:cc:cc
+    id: ble_trv_bedroom
+  - mac_address: 00:04:2f:dd:dd:dd
+    id: ble_trv_bathroom
+  - mac_address: 00:04:2f:ee:ee:ee
+    id: ble_trv_office
+
+# ---------------------------------------------------------------------------
+# Climate entities – no update_interval needed; the manager drives all polling
+# ---------------------------------------------------------------------------
+climate:
+  - platform: danfoss_eco
+    name: "Room eTRV"
+    id: trv_room
+    ble_client_id: ble_trv_room
+    secret_key: deadbeefcafebabedeadbeefcafebabe
+    battery_level:
+      name: "Room eTRV Battery"
+    temperature:
+      name: "Room eTRV Temperature"
+
+  - platform: danfoss_eco
+    name: "Kitchen eTRV"
+    id: trv_kitchen
+    ble_client_id: ble_trv_kitchen
+    secret_key: deadbeefcafebabedeadbeefcafebabe
+    battery_level:
+      name: "Kitchen eTRV Battery"
+    temperature:
+      name: "Kitchen eTRV Temperature"
+
+  - platform: danfoss_eco
+    name: "Bedroom eTRV"
+    id: trv_bedroom
+    ble_client_id: ble_trv_bedroom
+    secret_key: deadbeefcafebabedeadbeefcafebabe
+    battery_level:
+      name: "Bedroom eTRV Battery"
+    temperature:
+      name: "Bedroom eTRV Temperature"
+
+  - platform: danfoss_eco
+    name: "Bathroom eTRV"
+    id: trv_bathroom
+    ble_client_id: ble_trv_bathroom
+    secret_key: deadbeefcafebabedeadbeefcafebabe
+    battery_level:
+      name: "Bathroom eTRV Battery"
+    temperature:
+      name: "Bathroom eTRV Temperature"
+
+  - platform: danfoss_eco
+    name: "Office eTRV"
+    id: trv_office
+    ble_client_id: ble_trv_office
+    secret_key: deadbeefcafebabedeadbeefcafebabe
+    battery_level:
+      name: "Office eTRV Battery"
+    temperature:
+      name: "Office eTRV Temperature"
+
+# ---------------------------------------------------------------------------
+# Manager – polls all 5 devices sequentially in one 15-minute cycle.
+# Estimated cycle duration: ~40–60 s (≈ 8–12 s per device).
+# Home Assistant commands are executed immediately and are not delayed by
+# the manager cycle.
+# ---------------------------------------------------------------------------
+danfoss_eco_manager:
+  update_interval: 15min
+  devices:
+    - id: trv_room
+    - id: trv_kitchen
+    - id: trv_bedroom
+    - id: trv_bathroom
+    - id: trv_office

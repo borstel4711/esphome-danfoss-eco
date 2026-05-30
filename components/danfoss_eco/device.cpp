@@ -50,8 +50,9 @@ namespace esphome
         this->disconnect();
     }
 
-    void Device::update()
+    void Device::trigger_update()
     {
+      this->active_ = true;
       this->connect();
 
       if (this->xxtea->status() == XXTEA_STATUS_SUCCESS)
@@ -63,6 +64,19 @@ namespace esphome
         this->commands_.push(new Command(CommandType::READ, this->p_settings));
         this->commands_.push(new Command(CommandType::READ, this->p_errors));
       }
+    }
+
+    bool Device::is_idle()
+    {
+      return !this->active_
+          && this->node_state == ClientState::IDLE
+          && this->commands_.is_empty()
+          && this->request_counter_ == 0;
+    }
+
+    void Device::update()
+    {
+      this->trigger_update();
     }
 
     void Device::control(const ClimateCall &call)
@@ -229,6 +243,7 @@ namespace esphome
 
     void Device::disconnect()
     {
+      this->active_ = false;
       this->parent()->set_enabled(false);
       this->node_state = ClientState::IDLE;
     }

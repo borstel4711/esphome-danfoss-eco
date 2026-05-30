@@ -48,6 +48,11 @@ namespace esphome
       void set_secret_key(const string &);
       void set_pin_code(const string &);
 
+      // Trigger a status read cycle (used by DanfossEcoManager for sequential polling)
+      void trigger_update();
+      // Returns true when the device has no ongoing BLE activity
+      bool is_idle();
+
     protected:
       void control(const ClimateCall &call) override;
 
@@ -77,6 +82,8 @@ namespace esphome
 
       uint8_t request_counter_ = 0;
       CommandQueue commands_;
+      // Set to true by trigger_update(), cleared by disconnect(); prevents false is_idle() positives
+      bool active_{false};
     };
 
   } // namespace danfoss_eco
