@@ -100,8 +100,8 @@ climate:
 # ---------------------------------------------------------------------------
 # Manager – polls all 5 devices sequentially in one 15-minute cycle.
 # Estimated cycle duration: ~40–60 s (≈ 8–12 s per device).
-# Home Assistant commands are executed immediately and are not delayed by
-# the manager cycle.
+# Home Assistant commands (e.g. set_temperature) are queued and executed at
+# the next available slot after the current device finishes its BLE session.
 # ---------------------------------------------------------------------------
 danfoss_eco_manager:
   update_interval: 15min

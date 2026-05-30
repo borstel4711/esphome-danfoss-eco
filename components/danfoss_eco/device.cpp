@@ -52,6 +52,10 @@ namespace esphome
 
     void Device::trigger_update()
     {
+      // Clear the priority flag before connecting. Any queued WRITE commands
+      // (from a prior control() call) remain in commands_ and will be executed
+      // before the READ commands queued below – the flag itself is only the
+      // manager's hint for prioritising this device in find_priority_device_().
       this->control_pending_ = false;
       this->active_ = true;
       this->connect();

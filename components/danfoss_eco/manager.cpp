@@ -15,6 +15,8 @@ namespace esphome
       // "managed" mode so that control() defers BLE connections to the manager.
       for (auto *device : this->devices_)
       {
+        // stop_poller() is an ESPHome built-in (PollingComponent) that disables
+        // the per-device update timer so the manager drives all polling instead.
         device->stop_poller();
         device->set_managed(true);
       }
