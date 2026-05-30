@@ -8,7 +8,7 @@ namespace esphome
   {
     void Device::setup()
     {
-      shared_ptr<MyComponent> sp_this(this);
+      shared_ptr<MyComponent> sp_this(this, [](MyComponent *) {});
 
       this->p_pin = make_shared<WritableProperty>(sp_this, xxtea, SERVICE_SETTINGS, CHARACTERISTIC_PIN);
       this->p_battery = make_shared<BatteryProperty>(sp_this, xxtea);

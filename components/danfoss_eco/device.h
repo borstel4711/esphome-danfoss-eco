@@ -69,7 +69,7 @@ namespace esphome
       shared_ptr<ErrorsProperty> p_errors{nullptr};
       shared_ptr<SecretKeyProperty> p_secret_key{nullptr};
 
-      set<shared_ptr<DeviceProperty>> properties{nullptr};
+      set<shared_ptr<DeviceProperty>> properties{};
 
     private:
       ESPPreferenceObject secret_pref_;

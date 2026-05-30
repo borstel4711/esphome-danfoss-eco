@@ -1,0 +1,5 @@
+# Increase the maximum number of simultaneous BLE ACL connections.
+# The ESP32 Bluedroid stack defaults to 3; raising this to 7 (the IDF maximum)
+# allows more than 3 Danfoss Eco eTRVs to be managed from a single ESP32.
+# Place this file in the same directory as your ESPHome YAML configuration.
+CONFIG_BT_ACL_CONNECTIONS=7
