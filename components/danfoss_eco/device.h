@@ -48,6 +48,19 @@ namespace esphome
       void set_secret_key(const string &);
       void set_pin_code(const string &);
 
+      // Trigger a full status read cycle (used by DanfossEcoManager for sequential polling)
+      void trigger_update();
+      // Initiate a BLE connection to flush pending HA commands without queuing new reads.
+      // Used by DanfossEcoManager when a Home Assistant command arrived between poll cycles.
+      void trigger_connect();
+      // Returns true when the device has no ongoing BLE activity
+      bool is_idle();
+
+      // Called by DanfossEcoManager so that control() defers BLE connections to the manager
+      void set_managed(bool managed) { this->managed_ = managed; }
+      // Returns true when control() queued a write that has not been flushed yet
+      bool has_pending_control() const { return this->control_pending_; }
+
     protected:
       void control(const ClimateCall &call) override;
 
@@ -77,6 +90,12 @@ namespace esphome
 
       uint8_t request_counter_ = 0;
       CommandQueue commands_;
+      // Set to true by trigger_update()/trigger_connect(), cleared by disconnect()
+      bool active_{false};
+      // True when running under DanfossEcoManager; suppresses autonomous connect() in control()
+      bool managed_{false};
+      // True while a control()-originated write command is waiting to be sent
+      bool control_pending_{false};
     };
 
   } // namespace danfoss_eco

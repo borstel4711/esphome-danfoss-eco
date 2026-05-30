@@ -50,8 +50,14 @@ namespace esphome
         this->disconnect();
     }
 
-    void Device::update()
+    void Device::trigger_update()
     {
+      // Clear the priority flag before connecting. Any queued WRITE commands
+      // (from a prior control() call) remain in commands_ and will be executed
+      // before the READ commands queued below – the flag itself is only the
+      // manager's hint for prioritising this device in find_priority_device_().
+      this->control_pending_ = false;
+      this->active_ = true;
       this->connect();
 
       if (this->xxtea->status() == XXTEA_STATUS_SUCCESS)
@@ -65,6 +71,29 @@ namespace esphome
       }
     }
 
+    void Device::trigger_connect()
+    {
+      // Called by DanfossEcoManager to flush pending HA write commands.
+      // We only initiate the BLE connection here; on_write() will trigger a
+      // full read cycle (via update()) once the write completes.
+      this->control_pending_ = false;
+      this->active_ = true;
+      this->connect();
+    }
+
+    bool Device::is_idle()
+    {
+      return !this->active_
+          && this->node_state == ClientState::IDLE
+          && this->commands_.is_empty()
+          && this->request_counter_ == 0;
+    }
+
+    void Device::update()
+    {
+      this->trigger_update();
+    }
+
     void Device::control(const ClimateCall &call)
     {
       if (call.get_target_temperature().has_value())
@@ -73,8 +102,11 @@ namespace esphome
         t_data.target_temperature = *call.get_target_temperature();
 
         this->commands_.push(new Command(CommandType::WRITE, this->p_temperature));
-        // initiate connection to the device
-        this->connect();
+        this->control_pending_ = true;
+        // In managed mode the manager picks up control_pending_ and schedules the
+        // connection; in standalone mode we connect immediately (original behaviour).
+        if (!this->managed_)
+          this->connect();
       }
 
       if (call.get_mode().has_value())
@@ -87,8 +119,9 @@ namespace esphome
         this->publish_state();
 
         this->commands_.push(new Command(CommandType::WRITE, this->p_settings));
-        // initiate connection to the device
-        this->connect();
+        this->control_pending_ = true;
+        if (!this->managed_)
+          this->connect();
       }
     }
 
@@ -229,6 +262,8 @@ namespace esphome
 
     void Device::disconnect()
     {
+      this->active_ = false;
+      this->request_counter_ = 0;
       this->parent()->set_enabled(false);
       this->node_state = ClientState::IDLE;
     }
