@@ -52,6 +52,7 @@ namespace esphome
 
     void Device::trigger_update()
     {
+      this->control_pending_ = false;
       this->active_ = true;
       this->connect();
 
@@ -64,6 +65,16 @@ namespace esphome
         this->commands_.push(new Command(CommandType::READ, this->p_settings));
         this->commands_.push(new Command(CommandType::READ, this->p_errors));
       }
+    }
+
+    void Device::trigger_connect()
+    {
+      // Called by DanfossEcoManager to flush pending HA write commands.
+      // We only initiate the BLE connection here; on_write() will trigger a
+      // full read cycle (via update()) once the write completes.
+      this->control_pending_ = false;
+      this->active_ = true;
+      this->connect();
     }
 
     bool Device::is_idle()
@@ -87,8 +98,11 @@ namespace esphome
         t_data.target_temperature = *call.get_target_temperature();
 
         this->commands_.push(new Command(CommandType::WRITE, this->p_temperature));
-        // initiate connection to the device
-        this->connect();
+        this->control_pending_ = true;
+        // In managed mode the manager picks up control_pending_ and schedules the
+        // connection; in standalone mode we connect immediately (original behaviour).
+        if (!this->managed_)
+          this->connect();
       }
 
       if (call.get_mode().has_value())
@@ -101,8 +115,9 @@ namespace esphome
         this->publish_state();
 
         this->commands_.push(new Command(CommandType::WRITE, this->p_settings));
-        // initiate connection to the device
-        this->connect();
+        this->control_pending_ = true;
+        if (!this->managed_)
+          this->connect();
       }
     }
 

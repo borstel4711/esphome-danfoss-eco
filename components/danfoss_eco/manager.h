@@ -13,13 +13,19 @@ namespace esphome
   {
 
     // DanfossEcoManager polls up to 5 eTRV devices sequentially in a single cycle.
-    // Each device is polled one after the other, so only one BLE connection is active
-    // at a time. The manager fires its own polling cycle at the configured update_interval
-    // and disables the individual per-device polling timers during setup.
+    // Each device is polled one after the other so only one BLE connection is active
+    // at a time, which avoids ESP32 BLE conflicts.
     //
-    // Home Assistant control commands (temperature changes, mode changes) are handled
-    // immediately by the Device's existing control() path and are unaffected by the
-    // manager's scheduling.
+    // Normal operation:
+    //   Every update_interval all registered devices are polled in order.
+    //
+    // Home Assistant command handling (priority path):
+    //   When HA sends a command (e.g. set_temperature), Device::control() queues the
+    //   write and sets a control_pending flag instead of opening a BLE connection
+    //   immediately. The manager detects this flag in loop(), waits for the current
+    //   device to finish, and then connects to the priority device to flush the write.
+    //   After the write completes Device::on_write() triggers a full read cycle so HA
+    //   sees fresh state. Only then does the manager continue with the normal schedule.
     class DanfossEcoManager : public PollingComponent
     {
     public:
@@ -34,8 +40,17 @@ namespace esphome
 
     protected:
       std::vector<Device *> devices_;
-      size_t current_idx_{0};
+
+      // Index into devices_ for the *next* device to poll in the regular cycle
+      size_t schedule_idx_{0};
+      // Pointer to the device currently active (BLE connection in progress or data exchange)
+      Device *active_device_{nullptr};
+      // True while a regular polling cycle (triggered by update_interval) is running
       bool cycle_active_{false};
+
+    private:
+      // Returns the first device that has a pending HA command and is idle (no active BLE)
+      Device *find_priority_device_();
     };
 
   } // namespace danfoss_eco
