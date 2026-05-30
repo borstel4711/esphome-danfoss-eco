@@ -1,10 +1,11 @@
 esphome:
   name: etrv2wifi
   comment: Extend Danfoss ECO eTRV BLE range over WiFi with ESPHome
-  platform: ESP32
+
+esp32:
   board: esp32dev
-  libraries:
-    - xxtea-iot-crypt@2.0.1
+  framework:
+    type: arduino
 
 # Enable Home Assistant API
 api:

@@ -23,16 +23,17 @@ You should know the MAC address of your Danfoss Eco in order to complete the con
 ```yaml
 esphome:
   name: etrv2wifi-scanner
-  platform: ESP32
+
+esp32:
   board: esp32dev
-  libraries:
-    - xxtea-iot-crypt@2.0.1
+  framework:
+    type: arduino
 
 logger:
   level: INFO
 
 external_components:
-  - source: github://dmitry-cherkas/esphome-danfoss-eco@v1.1.4
+  - source: github://borstel4711/esphome-danfoss-eco
 
 sensor:
   - platform: danfoss_eco_scanner
@@ -46,7 +47,13 @@ When the scanner is running, press the hardware button on your Danfoss Eco in or
 Once the MAC Adress is known, esphome component can be configured as follows:
 ```yaml
 external_components:
-  - source: github://dmitry-cherkas/esphome-danfoss-eco@v1.1.4
+  - source: github://borstel4711/esphome-danfoss-eco
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
 ble_client:
   - mac_address: 00:04:2f:xx:yy:zz
     id: room_eco
@@ -90,6 +97,41 @@ Configuration options
 - **secret_key** (**Required**, string): Device encryption key, 16 characters.
 - **battery_level** (**Optional**, string): Remaining battery level sensor name. Sensor will not be created, if the name is not provided.
 - **temperature** (**Optional**, string): Current temperature (Celsius) sensor name. Sensor will not be created, if the name is not provided.
+
+> **NOTE:** Find more configuration examples in the repository root folder.
+
+
+Managing more than 3 eTRVs
+--------------------------
+
+The ESP32 Bluetooth stack (Bluedroid) allows a maximum of **3 simultaneous ACL connections** by default. This component uses connect/disconnect cycles — it connects during `update()` and disconnects once all reads/writes are complete — so more than 3 devices *can* be managed sequentially as long as they are never all connected at the same time.
+
+**Recommended approach for 4–7 devices (sequential polling):**
+
+Stagger the `update_interval` of each climate device so that their poll cycles do not overlap. For example:
+```yaml
+climate:
+  - platform: danfoss_eco
+    name: "Room 1 eTRV"
+    update_interval: 15min
+  - platform: danfoss_eco
+    name: "Room 2 eTRV"
+    update_interval: 16min
+  - platform: danfoss_eco
+    name: "Room 3 eTRV"
+    update_interval: 17min
+  - platform: danfoss_eco
+    name: "Room 4 eTRV"
+    update_interval: 18min
+```
+
+**Raising the connection limit (up to 7 devices):**
+
+To raise the Bluedroid ACL connection limit from 3 to 7, create a file named `sdkconfig.defaults` in the same directory as your ESPHome YAML configuration with the following content:
+```
+CONFIG_BT_ACL_CONNECTIONS=7
+```
+A ready-to-use `sdkconfig.defaults` file is included in this repository.
 
 > **NOTE:** Find more configuration examples in the repository root folder.
 

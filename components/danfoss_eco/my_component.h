@@ -18,7 +18,7 @@ namespace esphome
         using namespace esphome::binary_sensor;
         using namespace esphome::text_sensor;
 
-        class MyComponent : public Climate, public PollingComponent, public enable_shared_from_this<MyComponent>
+        class MyComponent : public Climate, public PollingComponent
         {
         public:
             float get_setup_priority() const override { return setup_priority::DATA; }

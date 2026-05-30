@@ -1,7 +1,10 @@
 esphome:
   name: etrv2wifi-scanner
-  platform: ESP32
+
+esp32:
   board: esp32dev
+  framework:
+    type: arduino
 
 # Enable logging
 logger:
