@@ -17,7 +17,12 @@ namespace esphome
     // at a time, which avoids ESP32 BLE conflicts.
     //
     // Normal operation:
-    //   Every update_interval all registered devices are polled in order.
+    //   Every update_interval all registered devices are polled in order. Between two
+    //   device sessions a short settle delay lets the BLE stack finish its teardown.
+    //
+    // Watchdog:
+    //   A device session that exceeds session_timeout is aborted so a single
+    //   unreachable eTRV cannot stall the whole polling cycle.
     //
     // Home Assistant command handling (priority path):
     //   When HA sends a command (e.g. set_temperature), Device::control() queues the
@@ -37,6 +42,7 @@ namespace esphome
       void dump_config() override;
 
       void add_device(Device *device) { this->devices_.push_back(device); }
+      void set_session_timeout(uint32_t timeout_ms) { this->session_timeout_ = timeout_ms; }
 
     protected:
       std::vector<Device *> devices_;
@@ -48,9 +54,20 @@ namespace esphome
       // True while a regular polling cycle (triggered by update_interval) is running
       bool cycle_active_{false};
 
+      // Maximum wall-clock time budget for a single device session (ms)
+      uint32_t session_timeout_{60000};
+      // millis() timestamp when the active device session was started
+      uint32_t session_started_at_{0};
+      // True once abort_session() was sent to the active device (avoid repeating it)
+      bool abort_sent_{false};
+      // millis() timestamp before which no new session may be started (settle delay)
+      uint32_t next_start_at_{0};
+
     private:
       // Returns the first device that has a pending HA command and is idle (no active BLE)
       Device *find_priority_device_();
+      // Marks a device session as started (bookkeeping for the watchdog)
+      void start_session_(Device *device);
     };
 
   } // namespace danfoss_eco

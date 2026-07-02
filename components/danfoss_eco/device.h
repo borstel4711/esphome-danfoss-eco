@@ -53,8 +53,12 @@ namespace esphome
       // Initiate a BLE connection to flush pending HA commands without queuing new reads.
       // Used by DanfossEcoManager when a Home Assistant command arrived between poll cycles.
       void trigger_connect();
-      // Returns true when the device has no ongoing BLE activity
-      bool is_idle();
+      // Force-terminate the current BLE session (used by DanfossEcoManager as a watchdog
+      // when a session exceeds its time budget). Cleanup completes asynchronously once the
+      // BLE stack reports the connection as closed; is_idle() flips to true at that point.
+      void abort_session();
+      // Returns true when the device has no BLE session in progress
+      bool is_idle() const { return !this->active_; }
 
       // Called by DanfossEcoManager so that control() defers BLE connections to the manager
       void set_managed(bool managed) { this->managed_ = managed; }
@@ -85,17 +89,27 @@ namespace esphome
       set<shared_ptr<DeviceProperty>> properties{};
 
     private:
+      // Push a command, deleting it if the queue is full (prevents leaks)
+      void enqueue_command_(Command *cmd);
+      // Reset session bookkeeping after the BLE link is down. Drops stale READ
+      // commands (re-queued on the next poll anyway) but keeps queued WRITEs so a
+      // Home Assistant command survives a failed session.
+      void finish_session_();
+
       ESPPreferenceObject secret_pref_;
       uint32_t pin_code_ = 0;
 
       uint8_t request_counter_ = 0;
       CommandQueue commands_;
-      // Set to true by trigger_update()/trigger_connect(), cleared by disconnect()
+      // True while a BLE session (connect, read/write exchange, disconnect) is in progress.
+      // Set by trigger_update()/trigger_connect(), cleared by finish_session_().
       bool active_{false};
       // True when running under DanfossEcoManager; suppresses autonomous connect() in control()
       bool managed_{false};
       // True while a control()-originated write command is waiting to be sent
       bool control_pending_{false};
+      // Number of failed attempts to flush a pending HA write; caps priority retries
+      uint8_t control_attempts_{0};
     };
 
   } // namespace danfoss_eco

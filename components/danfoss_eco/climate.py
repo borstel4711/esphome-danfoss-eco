@@ -60,8 +60,8 @@ CONFIG_SCHEMA = (
     climate.climate_schema(DanfossEco).extend(
         {
             cv.GenerateID(): cv.declare_id(DanfossEco),
-            cv.Optional(CONF_SECRET_KEY): validate_secret,
-            cv.Optional(CONF_PIN_CODE): validate_pin,
+            cv.Optional(CONF_SECRET_KEY): cv.sensitive(validate_secret),
+            cv.Optional(CONF_PIN_CODE): cv.sensitive(validate_pin),
             cv.Optional(CONF_BATTERY_LEVEL): sensor.sensor_schema(
                 unit_of_measurement=UNIT_PERCENT,
                 accuracy_decimals=0,
@@ -97,7 +97,10 @@ CONFIG_SCHEMA = (
         }
     )
     .extend(ble_client.BLE_CLIENT_SCHEMA)
-    .extend(cv.polling_component_schema("60s"))
+    # 15min keeps the eTRV state reasonably fresh while limiting BLE sessions to
+    # ~96/day per device - each session costs eTRV battery. HA commands are sent
+    # immediately regardless of this interval.
+    .extend(cv.polling_component_schema("15min"))
 )
 
 async def to_code(config):

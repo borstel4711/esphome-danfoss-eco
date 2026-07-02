@@ -9,13 +9,19 @@ from esphome.const import CONF_ID
 # at the configured update_interval. Only one BLE connection is active at a time,
 # which avoids ESP32 BLE conflicts.
 #
-# Home Assistant control commands (set_temperature, set_mode) continue to work
-# immediately because they use the Device's own connect()/command-queue path.
+# A per-device session watchdog (session_timeout) makes sure a single unreachable
+# eTRV cannot stall the polling cycle: its session is aborted and the manager
+# continues with the next device.
+#
+# Home Assistant control commands (set_temperature, set_mode) are queued by the
+# device and flushed by the manager with priority, as soon as the currently
+# active BLE session (if any) has finished.
 #
 # Usage example:
 #
 #   danfoss_eco_manager:
 #     update_interval: 15min
+#     session_timeout: 60s
 #     devices:
 #       - id: trv_room
 #       - id: trv_kitchen
@@ -24,18 +30,30 @@ from esphome.const import CONF_ID
 #       - id: trv_office
 
 CODEOWNERS = ["@dmitry-cherkas"]
-DEPENDENCIES = ["danfoss_eco"]
+# NOTE: no DEPENDENCIES on "danfoss_eco" here - it is a climate *platform*, not a
+# top-level component, so a dependency on it can never be satisfied. The devices
+# list below (cv.use_id) already enforces that danfoss_eco climates exist.
 
 CONF_DEVICES = "devices"
+CONF_SESSION_TIMEOUT = "session_timeout"
 
 eco_ns = cg.esphome_ns.namespace("danfoss_eco")
 DanfossEcoManager = eco_ns.class_("DanfossEcoManager", cg.PollingComponent)
 DanfossDevice = eco_ns.class_("Device")
 
+# accepts both "- trv_room" and "- id: trv_room" list entries
+DEVICE_SCHEMA = cv.maybe_simple_value(
+    cv.Schema({cv.Required(CONF_ID): cv.use_id(DanfossDevice)}),
+    key=CONF_ID,
+)
+
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(DanfossEcoManager),
-        cv.Required(CONF_DEVICES): cv.ensure_list(cv.use_id(DanfossDevice)),
+        cv.Required(CONF_DEVICES): cv.ensure_list(DEVICE_SCHEMA),
+        cv.Optional(
+            CONF_SESSION_TIMEOUT, default="60s"
+        ): cv.positive_time_period_milliseconds,
     }
 ).extend(cv.polling_component_schema("15min"))
 
@@ -44,6 +62,8 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
-    for device_id in config[CONF_DEVICES]:
-        device = await cg.get_variable(device_id)
+    cg.add(var.set_session_timeout(config[CONF_SESSION_TIMEOUT]))
+
+    for device_conf in config[CONF_DEVICES]:
+        device = await cg.get_variable(device_conf[CONF_ID])
         cg.add(var.add_device(device))
