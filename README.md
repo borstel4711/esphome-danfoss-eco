@@ -159,6 +159,16 @@ Polling is a trade-off between data freshness and eTRV battery life — every po
 > **NOTE:** Find more configuration examples in the repository root folder.
 
 
+Most stable setup: wired PoE gateway
+------------------------------------
+
+For a rock-solid, always-on gateway (especially with 4–5 eTRVs) a **PoE Ethernet** board beats WiFi: dropping WiFi removes the WiFi/BLE 2.4 GHz radio coexistence contention — the biggest source of flaky BLE on ESP32 — and frees the RAM the WiFi stack would use. A board with an **external antenna** additionally improves range to eTRVs behind metal radiators.
+
+`example_5_poe.yaml` is a complete config for the **Olimex ESP32-POE-ISO-WROVER-EA** (isolated PoE, 8 MB PSRAM, external antenna). Two board specifics worth noting:
+
+- Uses `ethernet:` instead of `wifi:`. On the **WROVER** variant GPIO16/17 are taken by the PSRAM, so Olimex moved the Ethernet clock from GPIO17 to **GPIO0** — hence `clk: {mode: CLK_OUT, pin: GPIO0}` (on the non-WROVER board it stays GPIO17). ESPHome will warn that GPIO0/GPIO12 are strapping pins; that is expected for this hardware.
+- Add an empty `psram:` block to enable the 8 MB PSRAM (extra heap headroom). Combined with Ethernet this leaves plenty of RAM, so `esp32_ble: max_connections: 5` can match the client count without a warning.
+
 See Also
 --------
 

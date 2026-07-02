@@ -1,0 +1,167 @@
+esphome:
+  name: etrv2eth
+  comment: Danfoss ECO eTRV BLE bridge over PoE - Olimex ESP32-POE-ISO-WROVER-EA
+
+esp32:
+  board: esp32-poe-iso
+  framework:
+    type: esp-idf
+
+# ---------------------------------------------------------------------------
+# PSRAM (WROVER module: 8 MB)
+# ---------------------------------------------------------------------------
+# Extra heap headroom for Bluedroid + the BLE connection slots. The classic
+# ESP32 (WROVER-E/IE) only supports quad mode @ 40 MHz, which ESPHome selects
+# by default - so an empty block is all that is needed.
+psram:
+
+# Enable Home Assistant API (generate your own key: https://esphome.io/components/api.html)
+api:
+  encryption:
+    key: "GENERATE-YOUR-OWN-32-BYTE-BASE64-KEY"
+
+ota:
+  - platform: esphome
+    password: "generate-ota-password"
+
+# ---------------------------------------------------------------------------
+# Wired PoE Ethernet (replaces wifi:)
+# ---------------------------------------------------------------------------
+# No WiFi means no WiFi/BLE radio coexistence contention - the single biggest
+# BLE-stability win on ESP32 - and it frees the RAM the WiFi stack would use.
+#
+# IMPORTANT - WROVER pin remap: on the WROVER variant GPIO16/17 are consumed by
+# the PSRAM, so Olimex moved the 50 MHz Ethernet reference clock from GPIO17 to
+# GPIO0. That is why clk.pin is GPIO0 here (mode CLK_OUT = the ESP32 generates
+# the clock). On the *non*-WROVER ESP32-POE-ISO this would instead be GPIO17.
+ethernet:
+  type: LAN8720
+  mdc_pin: GPIO23
+  mdio_pin: GPIO18
+  clk:
+    mode: CLK_OUT
+    pin: GPIO0
+  phy_addr: 0
+  power_pin: GPIO12
+
+external_components:
+  - source: github://borstel4711/esphome-danfoss-eco
+
+# ---------------------------------------------------------------------------
+# BLE stack tuning
+# ---------------------------------------------------------------------------
+# With PSRAM + Ethernet (no WiFi) there is ample RAM, so max_connections is
+# matched to the number of ble_clients (no config warning). Only one connection
+# is ever active at a time thanks to the manager's sequential polling.
+esp32_ble:
+  max_connections: 5
+
+# eTRVs are connected by MAC address - no continuous scanning needed.
+esp32_ble_tracker:
+  scan_parameters:
+    continuous: false
+
+# ---------------------------------------------------------------------------
+# BLE clients - one entry per physical eTRV
+# ---------------------------------------------------------------------------
+ble_client:
+  - mac_address: 00:04:2f:aa:aa:aa
+    id: ble_trv_room
+  - mac_address: 00:04:2f:bb:bb:bb
+    id: ble_trv_kitchen
+  - mac_address: 00:04:2f:cc:cc:cc
+    id: ble_trv_bedroom
+  - mac_address: 00:04:2f:dd:dd:dd
+    id: ble_trv_bathroom
+  - mac_address: 00:04:2f:ee:ee:ee
+    id: ble_trv_office
+
+# ---------------------------------------------------------------------------
+# Climate entities - no update_interval needed; the manager drives all polling
+# ---------------------------------------------------------------------------
+climate:
+  - platform: danfoss_eco
+    name: "Room eTRV"
+    id: trv_room
+    ble_client_id: ble_trv_room
+    secret_key: deadbeefcafebabedeadbeefcafebabe
+    battery_level:
+      name: "Room eTRV Battery"
+    temperature:
+      name: "Room eTRV Temperature"
+
+  - platform: danfoss_eco
+    name: "Kitchen eTRV"
+    id: trv_kitchen
+    ble_client_id: ble_trv_kitchen
+    secret_key: deadbeefcafebabedeadbeefcafebabe
+    battery_level:
+      name: "Kitchen eTRV Battery"
+    temperature:
+      name: "Kitchen eTRV Temperature"
+
+  - platform: danfoss_eco
+    name: "Bedroom eTRV"
+    id: trv_bedroom
+    ble_client_id: ble_trv_bedroom
+    secret_key: deadbeefcafebabedeadbeefcafebabe
+    battery_level:
+      name: "Bedroom eTRV Battery"
+    temperature:
+      name: "Bedroom eTRV Temperature"
+
+  - platform: danfoss_eco
+    name: "Bathroom eTRV"
+    id: trv_bathroom
+    ble_client_id: ble_trv_bathroom
+    secret_key: deadbeefcafebabedeadbeefcafebabe
+    battery_level:
+      name: "Bathroom eTRV Battery"
+    temperature:
+      name: "Bathroom eTRV Temperature"
+
+  - platform: danfoss_eco
+    name: "Office eTRV"
+    id: trv_office
+    ble_client_id: ble_trv_office
+    secret_key: deadbeefcafebabedeadbeefcafebabe
+    battery_level:
+      name: "Office eTRV Battery"
+    temperature:
+      name: "Office eTRV Temperature"
+
+# ---------------------------------------------------------------------------
+# Manager - polls all 5 devices sequentially in one 15-minute cycle.
+# A session that exceeds session_timeout is aborted so a single unreachable
+# eTRV cannot stall the cycle. Home Assistant commands are flushed with
+# priority as soon as the current BLE session finishes.
+# ---------------------------------------------------------------------------
+danfoss_eco_manager:
+  update_interval: 15min
+  session_timeout: 60s
+  devices:
+    - id: trv_room
+    - id: trv_kitchen
+    - id: trv_bedroom
+    - id: trv_bathroom
+    - id: trv_office
+
+# ---------------------------------------------------------------------------
+# Diagnostics - confirm the board stays comfortable with 5 eTRVs.
+# Free PSRAM > 0 also proves the WROVER PSRAM initialised correctly.
+# ---------------------------------------------------------------------------
+sensor:
+  - platform: template
+    name: "Free Heap"
+    lambda: "return (float) esp_get_free_heap_size();"
+    unit_of_measurement: "B"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 60s
+  - platform: template
+    name: "Free PSRAM"
+    lambda: "return (float) heap_caps_get_free_size(MALLOC_CAP_SPIRAM);"
+    unit_of_measurement: "B"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 60s
