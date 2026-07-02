@@ -27,7 +27,7 @@ esphome:
 esp32:
   board: esp32dev
   framework:
-    type: arduino
+    type: esp-idf
 
 logger:
   level: INFO
@@ -52,7 +52,7 @@ external_components:
 esp32:
   board: esp32dev
   framework:
-    type: arduino
+    type: esp-idf
 
 ble_client:
   - mac_address: 00:04:2f:xx:yy:zz
@@ -97,41 +97,64 @@ Configuration options
 - **secret_key** (**Required**, string): Device encryption key, 16 characters.
 - **battery_level** (**Optional**, string): Remaining battery level sensor name. Sensor will not be created, if the name is not provided.
 - **temperature** (**Optional**, string): Current temperature (Celsius) sensor name. Sensor will not be created, if the name is not provided.
+- **update_interval** (*Optional*, default `15min`): How often the eTRV state is polled over BLE. Ignored when the device is managed by `danfoss_eco_manager`. See [Choosing an update_interval](#choosing-an-update_interval).
+
+`danfoss_eco_manager` options:
+
+- **devices** (**Required**, list): IDs of the `danfoss_eco` climate devices to manage.
+- **update_interval** (*Optional*, default `15min`): How often a full polling cycle (all devices, one after the other) is started.
+- **session_timeout** (*Optional*, default `60s`): Watchdog budget for a single device session. A session that runs longer is aborted so the cycle can continue with the next device.
 
 > **NOTE:** Find more configuration examples in the repository root folder.
 
 
-Managing more than 3 eTRVs
---------------------------
+Managing multiple eTRVs (up to 5+ per ESP32)
+--------------------------------------------
 
-The ESP32 Bluetooth stack (Bluedroid) allows a maximum of **3 simultaneous ACL connections** by default. This component uses connect/disconnect cycles — it connects during `update()` and disconnects once all reads/writes are complete — so more than 3 devices *can* be managed sequentially as long as they are never all connected at the same time.
+The recommended way to run several eTRVs on a single ESP32 is the `danfoss_eco_manager` component. It polls all devices **sequentially** — only one BLE connection is active at a time — which is what makes 5 devices per ESP32 stable:
 
-**Recommended approach for 4–7 devices (sequential polling):**
-
-Stagger the `update_interval` of each climate device so that their poll cycles do not overlap. For example:
 ```yaml
-climate:
-  - platform: danfoss_eco
-    name: "Room 1 eTRV"
-    update_interval: 15min
-  - platform: danfoss_eco
-    name: "Room 2 eTRV"
-    update_interval: 16min
-  - platform: danfoss_eco
-    name: "Room 3 eTRV"
-    update_interval: 17min
-  - platform: danfoss_eco
-    name: "Room 4 eTRV"
-    update_interval: 18min
+danfoss_eco_manager:
+  update_interval: 15min   # one full cycle (all devices) per interval
+  session_timeout: 60s     # watchdog: abort a hanging session, continue with the next device
+  devices:
+    - id: trv_room
+    - id: trv_kitchen
+    - id: trv_bedroom
+    - id: trv_bathroom
+    - id: trv_office
 ```
 
-**Raising the connection limit (up to 7 devices):**
+The manager takes over the polling of all listed devices (their own `update_interval` is disabled), aborts sessions that hang (`session_timeout`) so a single unreachable eTRV cannot stall the cycle, and flushes Home Assistant commands with priority as soon as the current BLE session finishes — so `set_temperature` etc. do not wait for the next polling cycle.
 
-To raise the Bluedroid ACL connection limit from 3 to 7, create a file named `sdkconfig.defaults` in the same directory as your ESPHome YAML configuration with the following content:
+Each `ble_client` statically claims one BLE connection slot, so tell ESPHome how many you need (ESPHome derives the matching ESP-IDF `sdkconfig` options from this — no `sdkconfig.defaults` file is needed):
+
+```yaml
+esp32_ble:
+  max_connections: 5   # one per ble_client entry (default is 3, maximum 9)
 ```
-CONFIG_BT_ACL_CONNECTIONS=7
+
+Since all devices are connected by MAC address, continuous BLE scanning is unnecessary and only competes with connections for radio time:
+
+```yaml
+esp32_ble_tracker:
+  scan_parameters:
+    continuous: false
 ```
-A ready-to-use `sdkconfig.defaults` file is included in this repository.
+
+See `example_4_manager.yaml` for a complete 5-device configuration.
+
+Choosing an `update_interval`
+-----------------------------
+
+Polling is a trade-off between data freshness and eTRV battery life — every poll opens a BLE connection on the thermostat. The eTRV regulates the room temperature autonomously; polling only synchronizes its state with Home Assistant, and **Home Assistant commands are always sent immediately**, independent of the interval.
+
+| update_interval | BLE sessions per device/day | Recommendation |
+|-----------------|-----------------------------|----------------|
+| 5min            | ~288                        | only for debugging |
+| 15min (default) | ~96                         | good freshness/battery compromise |
+| 30min           | ~48                         | battery-friendly, still fresh enough for room temperature |
+| 60min           | ~24                         | maximum battery life |
 
 > **NOTE:** Find more configuration examples in the repository root folder.
 

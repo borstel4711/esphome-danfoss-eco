@@ -4,15 +4,22 @@ esphome:
 
 esp32:
   board: esp32dev
+  # esp-idf is the recommended (and current ESPHome default) framework for BLE projects
   framework:
-    type: arduino
+    type: esp-idf
 
 wifi:
   ssid: "my-ssid"
   password: "my-password"
 
 external_components:
-  - source: github://dmitry-cherkas/esphome-danfoss-eco@v1.1.4
+  - source: github://borstel4711/esphome-danfoss-eco
+
+# The eTRV is connected to by MAC address - no continuous scanning is needed.
+# Disabling it keeps the radio free for (re)connections.
+esp32_ble_tracker:
+  scan_parameters:
+    continuous: false
 
 ble_client:
   - mac_address: 00:04:2f:xx:xx:xx
@@ -23,11 +30,13 @@ climate:
     name: "My Room eTRV"
     ble_client_id: room_eco2
     pin_code: "0000"
-    secret_key: deadbeefcafebabedeadbeefcafebabe 
+    secret_key: deadbeefcafebabedeadbeefcafebabe
     battery_level:
       name: "My Room eTRV Battery Level"
     temperature:
       name: "My Room eTRV Temperature"
     problems:
       name: "My Room eTRV Problems"
-    update_interval: 30min
+    # Trade-off between freshness and eTRV battery life; HA commands are sent
+    # immediately regardless of this interval. Default is 15min.
+    update_interval: 15min

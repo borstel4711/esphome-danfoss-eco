@@ -4,15 +4,18 @@ esphome:
 
 esp32:
   board: esp32dev
+  # esp-idf is the recommended (and current ESPHome default) framework for BLE projects
   framework:
-    type: arduino
+    type: esp-idf
 
-# Enable Home Assistant API
+# Enable Home Assistant API (generate your own key: https://esphome.io/components/api.html)
 api:
-  password: "generate-api-password"
+  encryption:
+    key: "GENERATE-YOUR-OWN-32-BYTE-BASE64-KEY"
 
 ota:
-  password: "generate-ota-password"
+  - platform: esphome
+    password: "generate-ota-password"
 
 wifi:
   ssid: "my-ssid"
@@ -26,12 +29,18 @@ wifi:
 captive_portal:
 
 external_components:
-  - source: github://dmitry-cherkas/esphome-danfoss-eco@v1.1.4
+  - source: github://borstel4711/esphome-danfoss-eco
 
 sensor:
   - platform: wifi_signal
     name: "etrv2wifi WiFi Signal Strength"
     update_interval: 60s
+
+# The eTRV is connected to by MAC address - no continuous scanning is needed.
+# Disabling it keeps the radio free for (re)connections.
+esp32_ble_tracker:
+  scan_parameters:
+    continuous: false
 
 ble_client:
   - mac_address: 00:04:2f:xx:xx:xx
@@ -47,4 +56,6 @@ climate:
       name: "My Room eTRV Battery Level"
     temperature:
       name: "My Room eTRV Temperature"
-    update_interval: 30min
+    # Trade-off between freshness and eTRV battery life; HA commands are sent
+    # immediately regardless of this interval. Default is 15min.
+    update_interval: 15min

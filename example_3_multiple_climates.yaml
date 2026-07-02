@@ -1,18 +1,24 @@
 esphome:
   name: etrv2wifi
-  comment: Extend Danfoss ECO eTRV BLE range over WiFi with ESPHome
+  comment: Two standalone Danfoss ECO eTRVs (for 3+ devices use example_4_manager.yaml)
 
 esp32:
   board: esp32dev
+  # esp-idf is the recommended (and current ESPHome default) framework for BLE projects
   framework:
-    type: arduino
+    type: esp-idf
 
 wifi:
   ssid: "my-ssid"
   password: "my-password"
 
 external_components:
-  - source: github://dmitry-cherkas/esphome-danfoss-eco@v1.1.4
+  - source: github://borstel4711/esphome-danfoss-eco
+
+# The eTRVs are connected to by MAC address - no continuous scanning is needed.
+esp32_ble_tracker:
+  scan_parameters:
+    continuous: false
 
 ble_client:
   - mac_address: 00:04:2f:xx:xx:xx
@@ -20,6 +26,9 @@ ble_client:
   - mac_address: 00:04:2f:yy:yy:yy
     id: kitchen_eco2
 
+# NOTE: with standalone devices, stagger the update_interval values so the poll
+# cycles do not overlap. For more than 2-3 devices prefer the danfoss_eco_manager
+# component (example_4_manager.yaml), which polls all devices sequentially.
 climate:
   - platform: danfoss_eco
     name: "My Room eTRV"
@@ -31,7 +40,7 @@ climate:
   - platform: danfoss_eco
     name: "My Kitchen eTRV"
     ble_client_id: kitchen_eco2
-    secret_key: deadbeefcafebabedeadbeefcafebabe 
+    secret_key: deadbeefcafebabedeadbeefcafebabe
     battery_level:
       name: "My Kitchen eTRV Battery Level"
     update_interval: 16min

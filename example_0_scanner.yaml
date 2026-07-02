@@ -3,8 +3,9 @@ esphome:
 
 esp32:
   board: esp32dev
+  # esp-idf is the recommended (and current ESPHome default) framework for BLE projects
   framework:
-    type: arduino
+    type: esp-idf
 
 # Enable logging
 logger:
@@ -15,7 +16,7 @@ logger:
     logger: NONE
 
 external_components:
-  - source: github://dmitry-cherkas/esphome-danfoss-eco@v1.1.4
+  - source: github://borstel4711/esphome-danfoss-eco
 
 sensor:
   - platform: danfoss_eco_scanner

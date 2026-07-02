@@ -1,18 +1,21 @@
 esphome:
   name: etrv2wifi
-  comment: Danfoss ECO eTRV BLE bridge – sequential polling of 5 devices via DanfossEcoManager
+  comment: Danfoss ECO eTRV BLE bridge - sequential polling of 5 devices via DanfossEcoManager
 
 esp32:
   board: esp32dev
+  # esp-idf is the recommended (and current ESPHome default) framework for BLE projects
   framework:
-    type: arduino
+    type: esp-idf
 
-# Enable Home Assistant API
+# Enable Home Assistant API (generate your own key: https://esphome.io/components/api.html)
 api:
-  password: "generate-api-password"
+  encryption:
+    key: "GENERATE-YOUR-OWN-32-BYTE-BASE64-KEY"
 
 ota:
-  password: "generate-ota-password"
+  - platform: esphome
+    password: "generate-ota-password"
 
 wifi:
   ssid: "my-ssid"
@@ -29,7 +32,22 @@ external_components:
   - source: github://borstel4711/esphome-danfoss-eco
 
 # ---------------------------------------------------------------------------
-# BLE clients – one entry per physical eTRV
+# BLE stack tuning
+# ---------------------------------------------------------------------------
+# Each ble_client statically claims one connection slot, so 5 eTRVs need
+# max_connections: 5 (ESPHome sets the matching sdkconfig options itself;
+# no sdkconfig.defaults file is needed).
+esp32_ble:
+  max_connections: 5
+
+# The eTRVs are connected to by MAC address - no continuous scanning is needed.
+# Disabling it keeps the radio free for the sequential polling sessions.
+esp32_ble_tracker:
+  scan_parameters:
+    continuous: false
+
+# ---------------------------------------------------------------------------
+# BLE clients - one entry per physical eTRV
 # ---------------------------------------------------------------------------
 ble_client:
   - mac_address: 00:04:2f:aa:aa:aa
@@ -44,7 +62,7 @@ ble_client:
     id: ble_trv_office
 
 # ---------------------------------------------------------------------------
-# Climate entities – no update_interval needed; the manager drives all polling
+# Climate entities - no update_interval needed; the manager drives all polling
 # ---------------------------------------------------------------------------
 climate:
   - platform: danfoss_eco
@@ -98,13 +116,15 @@ climate:
       name: "Office eTRV Temperature"
 
 # ---------------------------------------------------------------------------
-# Manager – polls all 5 devices sequentially in one 15-minute cycle.
-# Estimated cycle duration: ~40–60 s (≈ 8–12 s per device).
-# Home Assistant commands (e.g. set_temperature) are queued and executed at
-# the next available slot after the current device finishes its BLE session.
+# Manager - polls all 5 devices sequentially in one 15-minute cycle.
+# Estimated cycle duration: ~40-60 s (~8-12 s per device).
+# A session that exceeds session_timeout is aborted so a single unreachable
+# eTRV cannot stall the cycle. Home Assistant commands (e.g. set_temperature)
+# are flushed with priority as soon as the current BLE session finishes.
 # ---------------------------------------------------------------------------
 danfoss_eco_manager:
   update_interval: 15min
+  session_timeout: 60s
   devices:
     - id: trv_room
     - id: trv_kitchen
