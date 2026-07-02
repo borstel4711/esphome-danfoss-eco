@@ -57,8 +57,9 @@ namespace esphome
       // when a session exceeds its time budget). Cleanup completes asynchronously once the
       // BLE stack reports the connection as closed; is_idle() flips to true at that point.
       void abort_session();
-      // Returns true when the device has no BLE session in progress
-      bool is_idle() const { return !this->active_; }
+      // Returns true when the device has no BLE session in progress and its BLE client
+      // has fully settled (teardown of the previous connection is complete)
+      bool is_idle() const { return !this->active_ && this->node_state == ClientState::IDLE; }
 
       // Called by DanfossEcoManager so that control() defers BLE connections to the manager
       void set_managed(bool managed) { this->managed_ = managed; }
@@ -110,6 +111,8 @@ namespace esphome
       bool control_pending_{false};
       // Number of failed attempts to flush a pending HA write; caps priority retries
       uint8_t control_attempts_{0};
+      // Consecutive PIN rejections; the device is disabled once this hits MAX_PIN_FAILURES
+      uint8_t pin_failures_{0};
     };
 
   } // namespace danfoss_eco

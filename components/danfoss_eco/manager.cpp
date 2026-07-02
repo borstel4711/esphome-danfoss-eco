@@ -41,35 +41,30 @@ namespace esphome
       // ── Phase 1: wait for the active device to finish (with watchdog) ────────
       if (this->active_device_ != nullptr)
       {
-        if (this->active_device_->is_idle())
+        const uint32_t session_age = now - this->session_started_at_;
+        const bool gave_up = session_age > this->session_timeout_ + ABORT_GRACE_MS;
+
+        if (!this->active_device_->is_idle() && !gave_up)
         {
-          this->active_device_ = nullptr;
-          this->next_start_at_ = now + SETTLE_TIME_MS;
-        }
-        else if (now - this->session_started_at_ > this->session_timeout_ + ABORT_GRACE_MS)
-        {
-          // The abort did not lead to an idle state in time - give up on this device
-          // so the rest of the cycle can continue. The device cleans itself up as soon
-          // as the BLE stack reports the link as closed.
-          ESP_LOGE(MANAGER_TAG, "DanfossEcoManager: device did not become idle after abort, skipping it");
-          this->active_device_ = nullptr;
-          this->next_start_at_ = now + SETTLE_TIME_MS;
-        }
-        else if (now - this->session_started_at_ > this->session_timeout_)
-        {
-          if (!this->abort_sent_)
+          if (session_age > this->session_timeout_ && !this->abort_sent_)
           {
             ESP_LOGW(MANAGER_TAG, "DanfossEcoManager: session exceeded %us, aborting",
                      (unsigned)(this->session_timeout_ / 1000));
             this->active_device_->abort_session();
             this->abort_sent_ = true;
           }
-          return;
+          return; // still busy
         }
-        else
+
+        if (gave_up && !this->active_device_->is_idle())
         {
-          return; // still busy, within its time budget
+          // The abort did not lead to an idle state in time - give up on this device
+          // so the rest of the cycle can continue. The device cleans itself up as soon
+          // as the BLE stack reports the link as closed.
+          ESP_LOGE(MANAGER_TAG, "DanfossEcoManager: device did not become idle after abort, skipping it");
         }
+        this->active_device_ = nullptr;
+        this->next_start_at_ = now + SETTLE_TIME_MS;
       }
 
       // ── Settle gate: give the BLE stack a moment between sessions ────────────
@@ -106,6 +101,9 @@ namespace esphome
       Device *next = this->devices_[this->schedule_idx_];
       this->schedule_idx_++;
 
+      if (next->is_failed())
+        return; // disabled (e.g. wrong pin_code) - don't waste a BLE session on it
+
       if (!next->is_idle())
       {
         // Should not happen under manager control; skip rather than pile on
@@ -125,13 +123,15 @@ namespace esphome
       if (this->devices_.empty())
         return;
 
-      if (this->cycle_active_ || this->active_device_ != nullptr)
+      if (this->cycle_active_)
       {
         // Do not reset schedule_idx_ mid-cycle: that would starve the devices at the
         // end of the list. Increase update_interval if this warning shows up regularly.
         ESP_LOGW(MANAGER_TAG, "DanfossEcoManager: previous polling cycle still running, skipping this one");
         return;
       }
+      // NOTE: a priority (HA command) session may be in flight right now; the cycle
+      // is armed anyway and starts as soon as that session finishes.
 
       ESP_LOGI(MANAGER_TAG, "DanfossEcoManager: starting polling cycle for %d device(s)",
                (int)this->devices_.size());
@@ -153,7 +153,7 @@ namespace esphome
     {
       for (auto *d : this->devices_)
       {
-        if (d->has_pending_control() && d->is_idle())
+        if (d->has_pending_control() && d->is_idle() && !d->is_failed())
           return d;
       }
       return nullptr;

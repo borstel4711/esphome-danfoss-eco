@@ -11,6 +11,10 @@ namespace esphome
     // Maximum attempts to flush a pending HA write before dropping it. Prevents an
     // unreachable device from being retried (and blocking the manager) forever.
     static const uint8_t MAX_CONTROL_ATTEMPTS = 3;
+    // Consecutive PIN rejections after which the device is considered misconfigured
+    // (wrong pin_code) and disabled - a wrong PIN is not transient, and retrying it
+    // every cycle wastes a full BLE session (and eTRV battery) each time.
+    static const uint8_t MAX_PIN_FAILURES = 5;
 
     void Device::setup()
     {
@@ -130,19 +134,33 @@ namespace esphome
 
     void Device::trigger_update()
     {
+      if (this->is_failed())
+        return;
+
       // Clear the priority flag before connecting. Any queued WRITE commands
       // (from a prior control() call) remain in commands_ and will be executed
       // before the READ commands queued below - the flag itself is only the
       // manager's hint for prioritising this device in find_priority_device_().
       this->control_pending_ = false;
 
-      // A session is already in progress (e.g. a connection attempt) - queuing more
-      // reads now would only accumulate duplicates.
-      if (this->active_ && this->node_state != ClientState::ESTABLISHED)
+      if (!this->active_)
+      {
+        if (this->node_state != ClientState::IDLE)
+        {
+          // BLE stack not up yet (INIT) or previous teardown still running
+          // (DISCONNECTING) - skip this poll, the next cycle retries.
+          ESP_LOGW(TAG, "[%s] BLE client not ready (state %d), poll skipped", this->get_name().c_str(), (int)this->node_state);
+          return;
+        }
+        this->active_ = true;
+        this->connect();
+      }
+      else if (this->node_state != ClientState::ESTABLISHED)
+      {
+        // A session is already starting up - queuing more reads now would only
+        // accumulate duplicates.
         return;
-
-      this->active_ = true;
-      this->connect();
+      }
 
       if (this->xxtea->status() == XXTEA_STATUS_SUCCESS)
       {
@@ -157,13 +175,16 @@ namespace esphome
 
     void Device::trigger_connect()
     {
-      // Called by DanfossEcoManager to flush pending HA write commands.
-      // We only initiate the BLE connection here; on_write() will trigger a
-      // full read cycle (via update()) once the write completes.
+      // Flush pending write commands over a fresh BLE session (called by
+      // DanfossEcoManager for the priority path and by control() in standalone
+      // mode). on_write() triggers a full read cycle once the write completes.
       this->control_pending_ = false;
 
-      if (this->active_)
+      if (this->is_failed() || this->active_)
         return;
+
+      if (this->node_state != ClientState::IDLE)
+        return; // client not settled; the queued write is flushed with the next session
 
       this->active_ = true;
       this->connect();
@@ -172,6 +193,14 @@ namespace esphome
     void Device::abort_session()
     {
       ESP_LOGW(TAG, "[%s] aborting BLE session", this->get_name().c_str());
+
+      // A client stuck in DISCOVERED was never promoted by the tracker - there is no
+      // connection to tear down, and BLEClientBase::disconnect() would only set a flag
+      // and wait for a connection that may never come. Revert it to IDLE directly;
+      // loop() then finishes the session bookkeeping.
+      if (this->node_state == ClientState::DISCOVERED)
+        this->parent()->set_state(ClientState::IDLE);
+
       this->disconnect();
     }
 
@@ -191,9 +220,11 @@ namespace esphome
         this->control_pending_ = true;
         this->control_attempts_ = 0;
         // In managed mode the manager picks up control_pending_ and schedules the
-        // connection; in standalone mode we connect immediately (original behaviour).
+        // connection; in standalone mode we start the session ourselves. Going through
+        // trigger_connect() (not bare connect()) marks the session active_, so the
+        // failed-write retry path in finish_session_() also covers standalone devices.
         if (!this->managed_)
-          this->connect();
+          this->trigger_connect();
       }
 
       if (call.get_mode().has_value())
@@ -209,7 +240,7 @@ namespace esphome
         this->control_pending_ = true;
         this->control_attempts_ = 0;
         if (!this->managed_)
-          this->connect();
+          this->trigger_connect();
       }
     }
 
@@ -318,15 +349,24 @@ namespace esphome
     {
       if (param.status != ESP_GATT_OK)
       {
-        // Do NOT mark_failed() here: a failed PIN write can be a transient BLE error and
-        // mark_failed() would disable this device until reboot. Drop the session and let
-        // the next polling cycle retry.
-        ESP_LOGE(TAG, "[%s] pin FAILED, status=%#04x", this->get_name().c_str(), param.status);
+        // A single failed PIN write can be a transient BLE error, so don't disable the
+        // device right away (the old mark_failed() bricked it until reboot). But a wrong
+        // pin_code fails deterministically - after several consecutive rejections stop
+        // retrying, otherwise every cycle wastes a full BLE session and eTRV battery.
+        this->pin_failures_++;
+        ESP_LOGE(TAG, "[%s] pin FAILED, status=%#04x (attempt %d/%d)", this->get_name().c_str(), param.status,
+                 (int)this->pin_failures_, (int)MAX_PIN_FAILURES);
+        if (this->pin_failures_ >= MAX_PIN_FAILURES)
+        {
+          ESP_LOGE(TAG, "[%s] PIN rejected %d times in a row - check pin_code, disabling device", this->get_name().c_str(), (int)this->pin_failures_);
+          this->mark_failed();
+        }
         this->disconnect();
         return;
       }
 
       ESP_LOGD(TAG, "[%s] pin OK", this->get_name().c_str());
+      this->pin_failures_ = 0;
       this->node_state = ClientState::ESTABLISHED;
 
       // after PIN is written, we might need to read the secret_key from the device
