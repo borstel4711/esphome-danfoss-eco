@@ -39,9 +39,10 @@ sensor:
   - platform: danfoss_eco_scanner
     id: scanner
 ```
-When the scanner is running, press the hardware button on your Danfoss Eco in order to speed up the discovery. Sample scanner output will look like this:
+When the scanner is running, press the hardware button on your Danfoss Eco in order to speed up the discovery. Each eTRV is reported once; sample scanner output looks like this:
 ```
-[01:40:19][I][danfoss_eco_scanner:027]: Found Danfoss eTRV, MAC: 00:04:2F:xx:yy:zz, Name: 0;0:04:2F:xx:yy:zz;eTRV
+[01:40:19][I][danfoss_eco_scanner:028]: Found Danfoss eTRV - MAC: 00:04:2F:xx:yy:zz
+[01:40:19][I][danfoss_eco_scanner:029]:   Add this MAC to your ble_client / danfoss_eco configuration.
 ```
 
 Once the MAC Adress is known, esphome component can be configured as follows:

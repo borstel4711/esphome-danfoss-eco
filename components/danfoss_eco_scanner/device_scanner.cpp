@@ -12,24 +12,23 @@ namespace esphome
 
         void DanfossEcoScanner::dump_config()
         {
-            ESP_LOGCONFIG(TAG, "Danfoss Eco Scanner:");
-            ESP_LOGCONFIG(TAG, "  Read Secret: %d", this->read_secret_);
+            ESP_LOGCONFIG(TAG, "Danfoss Eco Scanner");
         }
 
         bool DanfossEcoScanner::parse_device(const ESPBTDevice &device)
         {
-            string name = device.get_name();
-            int s_len = eTRV_SUFFIX.length();
+            const string &name = device.get_name();
+            size_t s_len = eTRV_SUFFIX.length();
 
             if (name.length() <= s_len || name.compare(name.length() - s_len, s_len, eTRV_SUFFIX) != 0)
                 return false;
 
-            ESP_LOGI(TAG, "Found Danfoss eTRV, MAC: %s, Name: %s", device.address_str().c_str(), name.c_str());
+            // Report each eTRV only once; advertisements repeat continuously.
+            if (!this->seen_.insert(device.address_uint64()).second)
+                return true;
 
-            uint8_t flags = (uint8_t)name.c_str()[0];
-            if ((flags & 0x4) >> 2)
-                ESP_LOGI(TAG, "Ready to read the secret key");
-
+            ESP_LOGI(TAG, "Found Danfoss eTRV - MAC: %s", device.address_str().c_str());
+            ESP_LOGI(TAG, "  Add this MAC to your ble_client / danfoss_eco configuration.");
             return true;
         }
 
