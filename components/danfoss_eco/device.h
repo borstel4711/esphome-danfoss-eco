@@ -63,6 +63,8 @@ namespace esphome
 
       // Called by DanfossEcoManager so that control() defers BLE connections to the manager
       void set_managed(bool managed) { this->managed_ = managed; }
+      // Returns true when running under DanfossEcoManager (used by SummerModeController)
+      bool is_managed() const { return this->managed_; }
       // Returns true when control() queued a write that has not been flushed yet
       bool has_pending_control() const { return this->control_pending_; }
 
