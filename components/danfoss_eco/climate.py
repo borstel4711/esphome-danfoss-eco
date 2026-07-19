@@ -5,7 +5,10 @@ from esphome.const import (
     CONF_ID,
     CONF_NAME,
     CONF_ICON,
-    
+
+    CONF_ENTITY_ID,
+    CONF_UPDATE_INTERVAL,
+
     CONF_TEMPERATURE,
     CONF_BATTERY_LEVEL,
 
@@ -36,11 +39,41 @@ CONF_SECRET_KEY = 'secret_key'
 CONF_PROBLEMS = 'problems'
 CONF_PROBLEMS_DETAIL = 'problems_detail'
 CONF_PROBLEMS_DETAIL_DEFAULT_ICON = 'mdi:format-list-checks'
+CONF_SUMMER_MODE = 'summer_mode'
 
 eco_ns = cg.esphome_ns.namespace("danfoss_eco")
 DanfossEco = eco_ns.class_(
     "Device", climate.Climate, ble_client.BLEClientNode, cg.PollingComponent
 )
+SummerModeController = eco_ns.class_("SummerModeController", cg.Component)
+
+# Shared by the danfoss_eco climate platform and the danfoss_eco_manager component.
+# While the referenced Home Assistant climate entity is "off" (heating disabled),
+# polling is throttled to the summer update_interval to save eTRV battery.
+SUMMER_MODE_SCHEMA = cv.All(
+    cv.Schema(
+        {
+            cv.GenerateID(): cv.declare_id(SummerModeController),
+            cv.Required(CONF_ENTITY_ID): cv.entity_id,
+            cv.Optional(CONF_UPDATE_INTERVAL, default="2h"): cv.update_interval,
+        }
+    ),
+    # HA state subscription runs over the native API - fail at validation time
+    # with a clear message instead of at C++ compile time.
+    cv.requires_component("api"),
+)
+
+
+async def summer_mode_to_code(config, target):
+    ctrl = cg.new_Pvariable(config[CONF_ID])
+    await cg.register_component(ctrl, {})
+    cg.add(ctrl.set_target(target))
+    cg.add(ctrl.set_entity_id(config[CONF_ENTITY_ID]))
+    cg.add(ctrl.set_summer_interval(config[CONF_UPDATE_INTERVAL]))
+    # HA state subscription support is compiled conditionally since ESPHome 2025.7;
+    # the built-in homeassistant platforms set the same define.
+    cg.add_define("USE_API_HOMEASSISTANT_STATES")
+    return ctrl
 
 def validate_secret(value):
     value = cv.string_strict(value)
@@ -93,7 +126,10 @@ CONFIG_SCHEMA = (
                 cv.Optional(CONF_NAME): cv.string,
                 cv.Optional(CONF_ENTITY_CATEGORY, default=ENTITY_CATEGORY_DIAGNOSTIC): cv.entity_category,
                 cv.Optional(CONF_ICON, default=CONF_PROBLEMS_DETAIL_DEFAULT_ICON): cv.icon,
-            })
+            }),
+            # Ignored (with a runtime warning) when the device is managed by
+            # danfoss_eco_manager - configure summer_mode on the manager instead.
+            cv.Optional(CONF_SUMMER_MODE): SUMMER_MODE_SCHEMA
         }
     )
     .extend(ble_client.BLE_CLIENT_SCHEMA)
@@ -124,4 +160,8 @@ async def to_code(config):
     if CONF_PROBLEMS_DETAIL in config:
         t_sens = await text_sensor.new_text_sensor(config[CONF_PROBLEMS_DETAIL])
         cg.add(var.set_problems_detail(t_sens))
-    
+    if CONF_SUMMER_MODE in config:
+        ctrl = await summer_mode_to_code(config[CONF_SUMMER_MODE], var)
+        # enables the runtime guard against throttling a managed device
+        cg.add(ctrl.set_device(var))
+

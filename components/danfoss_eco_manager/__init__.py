@@ -2,6 +2,12 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
 
+from esphome.components.danfoss_eco.climate import (
+    CONF_SUMMER_MODE,
+    SUMMER_MODE_SCHEMA,
+    summer_mode_to_code,
+)
+
 # danfoss_eco_manager component
 #
 # Coordinates sequential BLE polling of multiple Danfoss ECO eTRV devices.
@@ -22,6 +28,9 @@ from esphome.const import CONF_ID
 #   danfoss_eco_manager:
 #     update_interval: 15min
 #     session_timeout: 60s
+#     summer_mode:                  # optional: throttle polling while heating is off
+#       entity_id: climate.heating
+#       update_interval: 2h
 #     devices:
 #       - id: trv_room
 #       - id: trv_kitchen
@@ -54,6 +63,10 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(
             CONF_SESSION_TIMEOUT, default="60s"
         ): cv.positive_time_period_milliseconds,
+        # While the referenced HA climate entity is "off" (heating disabled), the
+        # polling cycle is throttled to the summer update_interval (default 2h)
+        # to save eTRV battery. HA commands are still flushed immediately.
+        cv.Optional(CONF_SUMMER_MODE): SUMMER_MODE_SCHEMA,
     }
 ).extend(cv.polling_component_schema("15min"))
 
@@ -67,3 +80,7 @@ async def to_code(config):
     for device_conf in config[CONF_DEVICES]:
         device = await cg.get_variable(device_conf[CONF_ID])
         cg.add(var.add_device(device))
+
+    if CONF_SUMMER_MODE in config:
+        # target is the manager's own poller - it drives all device polling
+        await summer_mode_to_code(config[CONF_SUMMER_MODE], var)

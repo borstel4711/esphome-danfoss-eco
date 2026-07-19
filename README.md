@@ -99,12 +99,16 @@ Configuration options
 - **battery_level** (**Optional**, string): Remaining battery level sensor name. Sensor will not be created, if the name is not provided.
 - **temperature** (**Optional**, string): Current temperature (Celsius) sensor name. Sensor will not be created, if the name is not provided.
 - **update_interval** (*Optional*, default `15min`): How often the eTRV state is polled over BLE. Ignored when the device is managed by `danfoss_eco_manager`. See [Choosing an update_interval](#choosing-an-update_interval).
+- **summer_mode** (*Optional*): Throttle polling while a Home Assistant climate entity is `off`. See [Summer mode](#summer-mode). Ignored (with a warning) when the device is managed by `danfoss_eco_manager` — configure it on the manager instead.
+  - **entity_id** (**Required**): The Home Assistant climate entity to follow, e.g. `climate.heating`.
+  - **update_interval** (*Optional*, default `2h`): Polling interval used while summer mode is active.
 
 `danfoss_eco_manager` options:
 
 - **devices** (**Required**, list): IDs of the `danfoss_eco` climate devices to manage.
 - **update_interval** (*Optional*, default `15min`): How often a full polling cycle (all devices, one after the other) is started.
 - **session_timeout** (*Optional*, default `60s`): Watchdog budget for a single device session. A session that runs longer is aborted so the cycle can continue with the next device.
+- **summer_mode** (*Optional*): Throttle the polling cycle while a Home Assistant climate entity is `off`. Same sub-options as above. See [Summer mode](#summer-mode).
 
 > **NOTE:** Find more configuration examples in the repository root folder.
 
@@ -158,6 +162,31 @@ Polling is a trade-off between data freshness and eTRV battery life — every po
 | 60min           | ~24                         | maximum battery life |
 
 > **NOTE:** Find more configuration examples in the repository root folder.
+
+Summer mode
+-----------
+
+In summer the heating is off, yet every poll still opens a BLE session on each eTRV and drains its battery. The `summer_mode` option links the polling schedule to a Home Assistant climate entity (e.g. your central heating): while that entity's state is exactly `off`, polling is throttled to the summer `update_interval` (default `2h`, ~12 BLE sessions per device/day).
+
+```yaml
+api:   # required - the entity state is subscribed over the native API
+
+danfoss_eco_manager:
+  update_interval: 15min
+  summer_mode:
+    entity_id: climate.heating   # HA entity; state "off" activates summer mode
+    update_interval: 2h          # optional, default 2h
+  devices:
+    - id: trv_room
+```
+
+Behavior details:
+
+- Only the exact state `off` activates summer mode. `heat`, `auto`, `unavailable`, `unknown` etc. all keep (or restore) the normal interval, so a temporarily unavailable entity can never leave polling stuck at the slow rate.
+- When the entity leaves `off` (heating turns back on), the normal interval is restored **and an immediate poll cycle is triggered**, so Home Assistant gets fresh state right away.
+- Home Assistant commands (`set_temperature`, mode changes) are always sent immediately — summer mode only throttles the periodic state polling.
+- Home Assistant pushes the current entity state whenever the ESP (re)connects to the API, so the mode also converges correctly after a reboot. Until the first API connection the normal interval applies.
+- In standalone setups the same `summer_mode` block can be placed on the `climate: platform: danfoss_eco` entry instead. On devices managed by `danfoss_eco_manager` the device-level option is ignored (with a warning) — configure it on the manager.
 
 
 Most stable setup: wired PoE gateway
